@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/conclava.jpg" alt="Conclava" width="200">
+</p>
+
 # Conclava
 
 [English](README.md) · [繁體中文](README.zh-TW.md) · [Installation guide](INSTALL.en.md)
