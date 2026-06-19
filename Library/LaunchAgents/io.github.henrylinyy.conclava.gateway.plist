@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.github.henrylinyy.conclava.gateway</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/yourname/Documents/conclava/.venv/bin/python</string>
+        <string>-m</string>
+        <string>conclava.cli</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/yourname/Documents/conclava</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/yourname/Library/Logs/conclava-gateway.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/yourname/Library/Logs/conclava-gateway.err.log</string>
+</dict>
+</plist>
