@@ -8,6 +8,10 @@
 
 **讓 Claude Code 和 Codex 同時指向你自己的 Mac——還配給它們一個由本地模型組成的 council:互相辯論、交叉檢查、抓出彼此的盲點。128GB、全程離線、每月 $0。**
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Conclava demo" width="900">
+</p>
+
 Conclava 是一個本機 gateway（`127.0.0.1:8088`），同時講三種 agent 協議——OpenAI **Responses**（Codex）、Anthropic **Messages**（Claude Code）、OpenAI **Chat Completions**（任何 OpenAI 相容 client）。這個單一 endpoint 背後是一整批分工的本地模型，外加一個多模型 **deliberation** 模式，讓一台 Apple Silicon 機器表現得像一個有專家小組的雲端 router。
 
 > 大多數「本地 LLM」方案丟給你一個擅長文字、其他都普通的模型。Conclava 反過來做：把每個請求路由到對的專家（coder、reasoner、vision、fast-formatter），你需要時還能召集好幾個專家組成 panel，由一個 judge model 統整。你拿到的是雲端等級的編排，但沒有雲端。

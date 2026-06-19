@@ -12,6 +12,10 @@
 
 **Point Claude Code *and* Codex at your own Mac — and give them a council of local models that debate, cross-check, and catch each other's blind spots. 128GB, fully offline, $0/month.**
 
+<p align="center">
+  <img src="assets/demo.gif" alt="Conclava demo — Claude Code answering locally, then a fusion-deliberation council" width="900">
+</p>
+
 Conclava is a single local gateway (`127.0.0.1:8088`) that speaks three agent protocols at once — OpenAI **Responses** (Codex), Anthropic **Messages** (Claude Code), and OpenAI **Chat Completions** (any OpenAI-compatible client). Behind that one endpoint sits a fleet of specialized local models, plus a multi-model **deliberation** mode that makes a single Apple Silicon machine behave like a cloud router with an opinionated panel of experts.
 
 > Most "local LLM" setups hand you one model that's good at text and mediocre at everything else. Conclava does the opposite: it routes each request to the right specialist (coder, reasoner, vision, fast-formatter) and, when you ask for it, convenes several of them into a panel that a judge model synthesizes. You get cloud-style orchestration without the cloud.

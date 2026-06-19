@@ -23,3 +23,8 @@ venv/
 
 # macOS
 .DS_Store
+
+# Node (demo recorder tooling — see scripts/record_demo.mjs)
+node_modules/
+.demo_tmp/
+assets/demo.webm
