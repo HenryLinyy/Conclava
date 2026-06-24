@@ -214,10 +214,9 @@ v1.6 把每個 profile 路由到為該工作而生的模型（下面是 LM Studi
 
 | 角色 | 模型 | 約略 RAM |
 | --- | --- | --- |
-| Fast / formatter / fast-vision | `gemma-4-26b-a4b-qat` | ~16GB |
+| Fast / formatter / agentic / pro chat | `gemma-4-26b-a4b-qat` | ~16GB |
 | Coder / tool-runner | `qwen3-coder-next` | ~65GB |
-| Vision（OCR / UI / visual-coding） | `qwen3-vl-30b` | ~34GB |
-| Agentic reasoning / pro chat | `qwen3.6-35b-a3b` | ~38GB |
+| Vision — fast + pro（OCR / UI / visual-coding） | `qwen3-vl-30b` | ~34GB |
 | Critic / judge | `deepseek-r1-distill-qwen-32b` | ~66GB |
 | Heavy 後端（ds4） | `deepseek-v4-flash` | ~90GB |
 
