@@ -188,9 +188,29 @@ judge 回傳五個區塊：
 
 ---
 
+## Agent runtime（v1.8）
+
+除了單次回答與 council，Conclava 還內建多步驟 **agent runtime**——planner → executor → repair → critic → judge 的迴圈，支援 tool call、context 壓縮、repo index，並把可重播的 run trace 存進 SQLite。三個 profile 驅動它：
+
+| 模型 | 用途 |
+| --- | --- |
+| `conclava-agent` | 通用長任務 agent——規劃、多步工具流、整理研究 |
+| `conclava-code-agent` | Coding／repo patch／測試／修復 workflow |
+| `conclava-review-agent` | 審查 plan／patch／架構／風險，不主動大改 |
+
+```bash
+curl http://127.0.0.1:8088/v1/responses \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"conclava-code-agent","input":"幫 fetch helper 加上重試，並用測試驗證。"}'
+```
+
+每個階段會解析一個模型 **role**，各自帶 fallback chain（`.env` 的 `MODEL_ROLE_*`），缺模型時優雅降級而不是整個 run 失敗。兩個 Fable/Mythos 風格的本地 worker 可加入迴圈：**Qwable**（coding executor／repair，預設開）與 **Qwythos**（長 context worker，需手動開）。兩者都在 `.env` 切換。
+
+---
+
 ## 模型專業化
 
-v1.5 把每個 profile 路由到為該工作而生的模型（下面是 LM Studio model ID；在 `.env` 換成你自己的）：
+v1.6 把每個 profile 路由到為該工作而生的模型（下面是 LM Studio model ID；在 `.env` 換成你自己的）：
 
 | 角色 | 模型 | 約略 RAM |
 | --- | --- | --- |
@@ -227,7 +247,7 @@ v1.5 把每個 profile 路由到為該工作而生的模型（下面是 LM Studi
 
 ## 狀態
 
-`v1.5.0` · **290 個測試通過** · macOS CI（pytest + ruff），涵蓋 Python 3.11 / 3.12。
+`v1.6.0` · **542 個測試通過** · macOS CI（pytest + ruff），涵蓋 Python 3.11 / 3.12。
 
 ```bash
 ./.venv/bin/pytest tests/ -q

@@ -34,7 +34,7 @@ def test_v1_fusion_presets_returns_4_presets(monkeypatch):
     assert data["presets"]["heavy"]["judge"] == "deepseek-v4-flash"
     assert data["presets"]["heavy"]["judge_backend"] == "ds4"
     assert data["presets"]["budget"]["judge_backend"] == "ollama"
-    assert data["default_preset"] == "quality"
+    assert data["default_preset"] == "budget"
 
 
 def test_v1_fusion_presets_loaded_returns_quick(monkeypatch):

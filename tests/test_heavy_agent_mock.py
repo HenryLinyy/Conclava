@@ -135,16 +135,15 @@ async def test_heavy_agent_unloads_ollama_models_before_ds4_primary(mock_config)
     # removed via dict.fromkeys. With LM Studio defaults:
     #   - model_tooler == model_coder → deduped
     #   - model_critic == model_judge → deduped
-    #   - formatter/vision-fast/formatter-mlx == fast → deduped
-    #   - hermes-pro/agentic-mlx == agentic-pro → deduped
+    #   - formatter/formatter-mlx/agentic-pro/hermes-pro/agentic-mlx == fast → deduped
+    #   - vision-fast == vision-pro → deduped
     assert unload_models == [
         mock_config.model_fast,  # google/gemma-4-26b-a4b-qat
         mock_config.model_coder,  # qwen/qwen3-coder-next
         mock_config.model_critic,  # deepseek-r1-distill-qwen-32b
         mock_config.model_vision_pro,  # qwen/qwen3-vl-30b
-        mock_config.model_agentic_pro,  # qwen/qwen3.6-35b-a3b
     ]
-    assert mock_config.model_vision_fast == mock_config.model_formatter
+    assert mock_config.model_vision_fast == mock_config.model_vision_pro
 
 
 @pytest.mark.asyncio

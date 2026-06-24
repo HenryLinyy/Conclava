@@ -21,6 +21,10 @@ venv/
 # Logs
 *.log
 
+# Agent runtime store (created at runtime in cwd)
+*.sqlite3
+.conclava_agent_runs.sqlite3
+
 # macOS
 .DS_Store
 

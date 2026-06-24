@@ -1,11 +1,32 @@
 """Model client wrappers for Ollama and ds4."""
 
+from typing import AsyncGenerator, Literal
 import httpx
 import json
 import logging
 import subprocess
 
 logger = logging.getLogger("conclava.models")
+
+
+def _completion_is_empty(result: dict) -> bool:
+    """True if a chat completion has blank assistant content and no tool_calls.
+
+    Used to detect the cold-load empty-content case (thinking models emit nothing
+    on their first call after loading). A tool-only response (empty content +
+    tool_calls) is NOT considered empty.
+    """
+    try:
+        choices = result.get("choices") or []
+        if not choices:
+            return False
+        message = choices[0].get("message") or {}
+        if message.get("tool_calls"):
+            return False
+        content = message.get("content")
+        return not (content and str(content).strip())
+    except Exception:
+        return False
 
 
 class OllamaClient:
@@ -23,14 +44,23 @@ class OllamaClient:
         timeout: int = 900,
         backend: str = "ollama",
         lmstudio_cli_path: str | None = None,
+        ttl_seconds: int | None = None,
     ):
         self.base_url = base_url.rstrip("/")
         self.backend = backend
         self.lmstudio_cli_path = lmstudio_cli_path
+        self.ttl_seconds = ttl_seconds
         self.client = httpx.Client(timeout=timeout)
 
     def _is_lmstudio(self) -> bool:
         return self.backend.lower() == "lmstudio"
+
+    def _apply_ttl(self, payload: dict) -> dict:
+        """Add LM Studio's JIT auto-unload TTL so idle models free memory faster
+        than the 1h default. Ignored by non-LM-Studio backends."""
+        if self._is_lmstudio() and self.ttl_seconds and self.ttl_seconds > 0:
+            payload.setdefault("ttl", self.ttl_seconds)
+        return payload
 
     def chat_completion(
         self,
@@ -51,7 +81,19 @@ class OllamaClient:
         }
         if tools:
             payload["tools"] = tools
+        self._apply_ttl(payload)
 
+        result = self._post_chat(payload)
+        # Thinking models (gemma-4, qwen3.6, Qwable) frequently return EMPTY
+        # content on the first call right after the model loads (cold start).
+        # Retry once — by then the model is warm and emits real content. Skip the
+        # retry for streaming and for legitimate tool-only responses.
+        if not stream and _completion_is_empty(result):
+            logger.info("empty completion from %s — retrying once (likely cold-load)", model)
+            result = self._post_chat(payload)
+        return result
+
+    def _post_chat(self, payload: dict) -> dict:
         response = self.client.post(f"{self.base_url}/chat/completions", json=payload)
         response.raise_for_status()
         return response.json()
@@ -85,6 +127,9 @@ class OllamaClient:
         }
         if tools:
             payload["tools"] = tools
+        self._apply_ttl(payload)
+
+        import json
 
         with self.client.stream(
             "POST", f"{self.base_url}/chat/completions", json=payload
@@ -92,16 +137,12 @@ class OllamaClient:
             response.raise_for_status()
             for raw_line in response.iter_lines():
                 # iter_lines yields bytes (when decode_unicode=False) or str
-                line = (
-                    raw_line.decode("utf-8")
-                    if isinstance(raw_line, bytes)
-                    else raw_line
-                )
+                line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
                 if not line or line.startswith(":"):
                     continue
                 if not line.startswith("data: "):
                     continue
-                data_str = line[len("data: ") :]
+                data_str = line[len("data: "):]
                 if data_str.strip() == "[DONE]":
                     return
                 try:
@@ -134,17 +175,14 @@ class OllamaClient:
                 "stream": stream,
                 "temperature": temperature,
             }
-            response = self.client.post(
-                f"{self.base_url}/chat/completions", json=payload
-            )
+            self._apply_ttl(payload)
+            response = self.client.post(f"{self.base_url}/chat/completions", json=payload)
             response.raise_for_status()
             data = response.json()
             message = data.get("choices", [{}])[0].get("message", {})
             return {"message": message}
 
-        native_base_url = (
-            self.base_url[:-3] if self.base_url.endswith("/v1") else self.base_url
-        )
+        native_base_url = self.base_url[:-3] if self.base_url.endswith("/v1") else self.base_url
         payload = {
             "model": model,
             "messages": messages,
@@ -201,9 +239,7 @@ class OllamaClient:
                 logger.info("LM Studio unload skipped: %s", e)
             return
 
-        native_base_url = (
-            self.base_url[:-3] if self.base_url.endswith("/v1") else self.base_url
-        )
+        native_base_url = self.base_url[:-3] if self.base_url.endswith("/v1") else self.base_url
         seen = set()
         for model in models:
             if not model or model in seen:

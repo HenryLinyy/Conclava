@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal
+import base64
 import re
 
 
@@ -39,7 +40,11 @@ class VisionEvidence:
     raw_text: str = ""
 
 
-DATA_URL_RE = re.compile(r"^data:(?P<mime>[-\w.+/]+);base64,(?P<data>.+)$", re.DOTALL)
+# Accept inline base64 data URLs with an empty media type (data:;base64,...) and
+# optional parameters (data:image/png;charset=utf-8;base64,...), per RFC 2397.
+DATA_URL_RE = re.compile(
+    r"^data:(?P<mime>[-\w.+/]*)(?:;[-\w.=]+)*;base64,(?P<data>.+)$", re.DOTALL
+)
 
 
 def image_from_url_value(
@@ -57,7 +62,7 @@ def image_from_url_value(
     if match:
         return ImageInput(
             source_protocol=source_protocol,
-            mime_type=match.group("mime"),
+            mime_type=match.group("mime") or "application/octet-stream",
             data_base64=match.group("data").strip(),
             url=None,
             local_path=None,
@@ -127,10 +132,7 @@ def format_vision_evidence(evidence: VisionEvidence, index: int) -> str:
         parts.extend(["Warnings:", str(evidence.warnings)])
     if evidence.confidence is not None:
         parts.extend(["Confidence:", str(evidence.confidence)])
-    if (
-        evidence.raw_text
-        and evidence.raw_text.strip() != (evidence.summary or "").strip()
-    ):
+    if evidence.raw_text and evidence.raw_text.strip() != (evidence.summary or "").strip():
         parts.extend(["Raw Evidence:", evidence.raw_text.strip()])
     parts.append("[/VisionEvidence]")
     return "\n".join(parts)

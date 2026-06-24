@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field, asdict
@@ -87,6 +88,7 @@ class ConversationStore:
         self.store_dir = store_dir or _default_store_dir()
         self.ttl_seconds = ttl_seconds
         self.store_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
 
     def _path(self, conv_id: str) -> Path:
         return self.store_dir / f"{conv_id}.json"
@@ -128,13 +130,14 @@ class ConversationStore:
         self, conv_id: str, message: ConversationMessage
     ) -> Optional[Conversation]:
         """Append a message to an existing conversation. Returns updated conv or None."""
-        conv = self.get(conv_id)
-        if conv is None:
-            return None
-        conv.messages.append(message)
-        conv.updated_at = time.time()
-        self._save(conv)
-        return conv
+        with self._lock:
+            conv = self.get(conv_id)
+            if conv is None:
+                return None
+            conv.messages.append(message)
+            conv.updated_at = time.time()
+            self._save(conv)
+            return conv
 
     def delete(self, conv_id: str) -> bool:
         """Delete a conversation. Returns True if existed, False if not."""

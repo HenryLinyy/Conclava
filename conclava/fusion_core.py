@@ -15,15 +15,22 @@ from conclava.prompts import (
     CHAT_AGENT_SYSTEM,
 )
 from conclava.action_parser import parse_action_from_text
+from conclava.agent_router import AgentRouter
 from conclava.config import FusionConfig
+from conclava.agent_orchestrator import AgentOrchestrator
+from conclava.agent_store import AgentStore
+from conclava.context_compactor import ContextCompactor
 from conclava.fusion_deliberation import run_fusion_agent
 from conclava.fusion_presets import FusionPresetError, resolve_preset
 from conclava.fusion_request import extract_fusion_request
+from conclava.model_selector import ModelSelector
 from conclava.static_fit import check_static_fit
 from conclava.vision import format_vision_evidence
 from conclava.vision_processor import VisionProcessor
 from conclava.vision_router import select_vision_profile
 from dataclasses import replace
+from typing import Literal
+import json
 import logging
 
 logger = logging.getLogger("conclava.fusion_core")
@@ -39,27 +46,40 @@ class FusionCore:
             timeout=config.conclava_timeout_seconds,
             backend=config.local_model_backend,
             lmstudio_cli_path=config.lmstudio_cli_path,
+            ttl_seconds=getattr(config, "lmstudio_ttl_seconds", None),
         )
         self.ds4 = DS4Client(config.ds4_base_url, timeout=config.ds4_timeout_seconds)
         self.vision = VisionProcessor(config, self.ollama)
+        self.agent_router = AgentRouter(config)
+        self.model_selector = ModelSelector(config)
+        self.agent_store = AgentStore(config.agent_store_path)
+        self.agent_store.init_schema()
+        self.context_compactor = ContextCompactor(config)
+        self.agent_orchestrator = AgentOrchestrator(
+            config=config,
+            model_client=self.ollama,
+            model_selector=self.model_selector,
+            store=self.agent_store,
+            compactor=self.context_compactor,
+        )
         # G12 micro D+E: track the most recent model used by any profile
         # (for /health introspection and trace breadcrumbs)
         self.last_used_model: str | None = None
 
     async def execute(self, task: ParsedAgentTask) -> FusionAction:
         """Execute a ParsedAgentTask and return a FusionAction."""
-        if task.images and task.profile not in (
-            "vision-fast",
-            "vision-pro",
-            "vision-heavy",
-        ):
+        if task.images and task.profile not in ("vision-fast", "vision-pro", "vision-heavy"):
             selected_vision_profile = select_vision_profile(task)
             if selected_vision_profile == "vision-heavy":
                 return await self._run_vision_heavy_agent(task)
             if selected_vision_profile in ("vision-fast", "vision-pro"):
                 task = await self._with_vision_evidence(task, selected_vision_profile)
 
-        profile = task.profile
+        original_workflow = task.profile
+        profile = self.agent_router.resolve_workflow(task, task.profile)
+        routed_from_workflow = original_workflow if profile != original_workflow else None
+        if routed_from_workflow is not None:
+            task = replace(task, profile=profile)
         limit = self._context_limit_for_profile(profile)
         input_chars = self._task_input_chars(task)
         if limit is not None and input_chars > limit:
@@ -106,6 +126,21 @@ class FusionCore:
             return await self._run_formatter_mlx_agent(task)
         elif profile == "fusion-agent":
             return await self._run_fusion_agent(task)
+        elif profile == "agentic-workflow":
+            return self._annotate_workflow_routing(
+                await self._run_agentic_workflow(task),
+                routed_from_workflow,
+            )
+        elif profile == "coding-workflow":
+            return self._annotate_workflow_routing(
+                await self._run_coding_workflow(task),
+                routed_from_workflow,
+            )
+        elif profile == "review-workflow":
+            return self._annotate_workflow_routing(
+                await self._run_review_workflow(task),
+                routed_from_workflow,
+            )
         else:
             return FusionAction(
                 type="final_answer",
@@ -157,22 +192,18 @@ class FusionCore:
             messages.append({"role": "user", "content": task.text})
 
         for index, evidence in enumerate(task.vision_evidence, start=1):
-            messages.append(
-                {
-                    "role": "user",
-                    "content": format_vision_evidence(evidence, index),
-                }
-            )
+            messages.append({
+                "role": "user",
+                "content": format_vision_evidence(evidence, index),
+            })
 
         # Tool results are user-provided evidence from the client loop. Keep
         # them prominent so models do not invent a different tool outcome.
         for tr in task.tool_results:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": self._format_tool_result_evidence(tr),
-                }
-            )
+            messages.append({
+                "role": "user",
+                "content": self._format_tool_result_evidence(tr),
+            })
 
         return messages
 
@@ -207,17 +238,17 @@ class FusionCore:
             return self.config.fast_max_input_chars
         if profile == "vision-heavy":
             return self.config.heavy_max_input_chars
+        if profile == "agentic-workflow":
+            return self.config.agentic_workflow_max_input_chars
+        if profile == "coding-workflow":
+            return self.config.coding_workflow_max_input_chars
+        if profile == "review-workflow":
+            return self.config.review_workflow_max_input_chars
         return None
 
     def _task_input_chars(self, task: ParsedAgentTask) -> int:
-        evidence_chars = sum(
-            len(e.raw_text or e.summary or "") for e in task.vision_evidence
-        )
-        return (
-            len(task.text)
-            + evidence_chars
-            + sum(len(tr.content or "") for tr in task.tool_results)
-        )
+        evidence_chars = sum(len(e.raw_text or e.summary or "") for e in task.vision_evidence)
+        return len(task.text) + evidence_chars + sum(len(tr.content or "") for tr in task.tool_results)
 
     def _request_max_tokens(self, task: ParsedAgentTask, default: int) -> int:
         value = task.raw_request.get("max_tokens")
@@ -225,9 +256,7 @@ class FusionCore:
             return min(value, default)
         return default
 
-    def _request_temperature(
-        self, task: ParsedAgentTask, default: float = 0.7
-    ) -> float:
+    def _request_temperature(self, task: ParsedAgentTask, default: float = 0.7) -> float:
         value = task.raw_request.get("temperature")
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             return float(value)
@@ -239,28 +268,22 @@ class FusionCore:
             return None
         tools_payload = []
         for t in task.tools:
-            tools_payload.append(
-                {
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description or "",
-                        "parameters": t.input_schema,
-                    },
-                }
-            )
+            tools_payload.append({
+                "type": "function",
+                "function": {
+                    "name": t.name,
+                    "description": t.description or "",
+                    "parameters": t.input_schema,
+                },
+            })
         return tools_payload
 
-    def _action_from_ollama_response(
-        self, response: dict, tools_payload: list[dict] | None = None
-    ) -> FusionAction:
+    def _action_from_ollama_response(self, response: dict, tools_payload: list[dict] | None = None) -> FusionAction:
         message = response.get("choices", [{}])[0].get("message", {})
         text = message.get("content", "")
         tool_calls_raw = message.get("tool_calls")
         if tool_calls_raw and tools_payload:
-            return parse_action_from_text(
-                {"tool_calls": tool_calls_raw}, tools=tools_payload
-            )
+            return parse_action_from_text({"tool_calls": tool_calls_raw}, tools=tools_payload)
         return parse_action_from_text(text, tools=tools_payload)
 
     def _ollama_models_for_unload(self) -> list[str]:
@@ -286,9 +309,7 @@ class FusionCore:
         if callable(unload_models):
             unload_models(self._ollama_models_for_unload())
 
-    async def _with_vision_evidence(
-        self, task: ParsedAgentTask, profile: str
-    ) -> ParsedAgentTask:
+    async def _with_vision_evidence(self, task: ParsedAgentTask, profile: str) -> ParsedAgentTask:
         """Return task with VisionEvidence appended once."""
         if task.vision_evidence:
             return task
@@ -303,9 +324,7 @@ class FusionCore:
             return routed
         return "vision-pro"
 
-    async def _run_vision_agent(
-        self, task: ParsedAgentTask, profile: str
-    ) -> FusionAction:
+    async def _run_vision_agent(self, task: ParsedAgentTask, profile: str) -> FusionAction:
         """Vision profile: extract evidence, then either answer or hand tools to coder."""
         task_with_evidence = await self._with_vision_evidence(task, profile)
         tools_payload = self._tools_payload(task_with_evidence)
@@ -315,9 +334,7 @@ class FusionCore:
 
         evidence_text = "\n\n".join(
             format_vision_evidence(evidence, index)
-            for index, evidence in enumerate(
-                task_with_evidence.vision_evidence, start=1
-            )
+            for index, evidence in enumerate(task_with_evidence.vision_evidence, start=1)
         )
         return FusionAction(
             type="final_answer",
@@ -343,9 +360,7 @@ class FusionCore:
         if action.trace is None:
             action.trace = {}
         action.trace["vision_profile"] = vision_profile
-        action.trace["vision_models"] = [
-            e.model for e in task_with_evidence.vision_evidence
-        ]
+        action.trace["vision_models"] = [e.model for e in task_with_evidence.vision_evidence]
         return action
 
     async def _run_fast_agent(self, task: ParsedAgentTask) -> FusionAction:
@@ -375,26 +390,18 @@ class FusionCore:
         coder_response = self.ollama.chat_completion(
             model=self.config.model_coder,
             messages=coder_messages,
-            max_tokens=self._request_max_tokens(
-                task, self.config.full_panel_max_tokens
-            ),
+            max_tokens=self._request_max_tokens(task, self.config.full_panel_max_tokens),
             stream=False,
             tools=tools_payload,
             temperature=self._request_temperature(task),
         )
         if tools_payload:
-            coder_action = self._action_from_ollama_response(
-                coder_response, tools_payload
-            )
+            coder_action = self._action_from_ollama_response(coder_response, tools_payload)
             if coder_action.type == "tool_call":
                 return coder_action
             coder_text = coder_action.text or ""
         else:
-            coder_text = (
-                coder_response.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-            )
+            coder_text = coder_response.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         # Step 2: Tooler reviews
         tooler_messages = [
@@ -404,40 +411,25 @@ class FusionCore:
         tooler_response = self.ollama.chat_completion(
             model=self.config.model_tooler,
             messages=tooler_messages,
-            max_tokens=self._request_max_tokens(
-                task, self.config.full_panel_max_tokens
-            ),
+            max_tokens=self._request_max_tokens(task, self.config.full_panel_max_tokens),
             stream=False,
             temperature=self._request_temperature(task),
         )
-        tooler_text = (
-            tooler_response.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
+        tooler_text = tooler_response.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         # Step 3: Critic reviews
         critic_messages = [
             {"role": "system", "content": FULL_AGENT_CRITIC_SYSTEM},
-            {
-                "role": "user",
-                "content": f"審查以下方案與審查意見：\n\n方案：{coder_text}\n\ntooler 意見：{tooler_text}",
-            },
+            {"role": "user", "content": f"審查以下方案與審查意見：\n\n方案：{coder_text}\n\ntooler 意見：{tooler_text}"},
         ]
         critic_response = self.ollama.chat_completion(
             model=self.config.model_critic,
             messages=critic_messages,
-            max_tokens=self._request_max_tokens(
-                task, self.config.full_panel_max_tokens
-            ),
+            max_tokens=self._request_max_tokens(task, self.config.full_panel_max_tokens),
             stream=False,
             temperature=self._request_temperature(task),
         )
-        critic_text = (
-            critic_response.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
+        critic_text = critic_response.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         # Step 4: Judge synthesizes
         judge_messages = [
@@ -450,15 +442,11 @@ class FusionCore:
         judge_response = self.ollama.chat_completion(
             model=self.config.model_judge,
             messages=judge_messages,
-            max_tokens=self._request_max_tokens(
-                task, self.config.full_judge_max_tokens
-            ),
+            max_tokens=self._request_max_tokens(task, self.config.full_judge_max_tokens),
             stream=False,
             temperature=self._request_temperature(task),
         )
-        judge_text = (
-            judge_response.get("choices", [{}])[0].get("message", {}).get("content", "")
-        )
+        judge_text = judge_response.get("choices", [{}])[0].get("message", {}).get("content", "")
 
         # Parse judge output as FusionAction
         return parse_action_from_text(judge_text)
@@ -477,9 +465,7 @@ class FusionCore:
                 stream=False,
                 temperature=self._request_temperature(task),
             )
-            coder_action = self._action_from_ollama_response(
-                coder_response, tools_payload
-            )
+            coder_action = self._action_from_ollama_response(coder_response, tools_payload)
             if coder_action.type == "tool_call":
                 coder_action.trace = {
                     "profile": "heavy-agent",
@@ -501,17 +487,11 @@ class FusionCore:
                 primary_response = self.ds4.chat_completion(
                     model=self.config.ds4_model,
                     messages=primary_messages,
-                    max_tokens=self._request_max_tokens(
-                        task, self.config.heavy_max_tokens
-                    ),
+                    max_tokens=self._request_max_tokens(task, self.config.heavy_max_tokens),
                     stream=False,
                     temperature=self._request_temperature(task),
                 )
-                primary_text = (
-                    primary_response.get("choices", [{}])[0]
-                    .get("message", {})
-                    .get("content", "")
-                )
+                primary_text = primary_response.get("choices", [{}])[0].get("message", {}).get("content", "")
             except Exception as e:
                 logger.warning(f"ds4 primary failed: {e}")
                 return await self._full_agent_fallback(task, "ds4_primary_failed")
@@ -554,17 +534,11 @@ class FusionCore:
             checker_response = self.ollama.chat_completion(
                 model=self.config.model_coder,
                 messages=checker_messages,
-                max_tokens=self._request_max_tokens(
-                    task, self.config.full_panel_max_tokens
-                ),
+                max_tokens=self._request_max_tokens(task, self.config.full_panel_max_tokens),
                 stream=False,
                 temperature=self._request_temperature(task),
             )
-            checker_text = (
-                checker_response.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-            )
+            checker_text = checker_response.get("choices", [{}])[0].get("message", {}).get("content", "")
 
             # Step 3: Critic (deepseek-r1)
             critic_messages = [
@@ -577,17 +551,11 @@ class FusionCore:
             critic_response = self.ollama.chat_completion(
                 model=self.config.model_critic,
                 messages=critic_messages,
-                max_tokens=self._request_max_tokens(
-                    task, self.config.full_panel_max_tokens
-                ),
+                max_tokens=self._request_max_tokens(task, self.config.full_panel_max_tokens),
                 stream=False,
                 temperature=self._request_temperature(task),
             )
-            critic_text = (
-                critic_response.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-            )
+            critic_text = critic_response.get("choices", [{}])[0].get("message", {}).get("content", "")
 
             # Step 4: Judge (deepseek-r1)
             judge_messages = [
@@ -600,23 +568,14 @@ class FusionCore:
             judge_response = self.ollama.chat_completion(
                 model=self.config.model_judge,
                 messages=judge_messages,
-                max_tokens=self._request_max_tokens(
-                    task, self.config.full_judge_max_tokens
-                ),
+                max_tokens=self._request_max_tokens(task, self.config.full_judge_max_tokens),
                 stream=False,
                 temperature=self._request_temperature(task),
             )
-            judge_text = (
-                judge_response.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-            )
+            judge_text = judge_response.get("choices", [{}])[0].get("message", {}).get("content", "")
 
             judge_action = parse_action_from_text(judge_text)
-            if (
-                judge_action.type == "final_answer"
-                and not (judge_action.text or "").strip()
-            ):
+            if judge_action.type == "final_answer" and not (judge_action.text or "").strip():
                 return self._primary_action(
                     primary_text,
                     "judge_empty: using ds4 primary answer",
@@ -637,9 +596,7 @@ class FusionCore:
             logger.info("ds4 offline, falling back to full-agent")
             return await self._full_agent_fallback(task, "ds4_offline")
 
-    async def _full_agent_fallback(
-        self, task: ParsedAgentTask, fallback_reason: str
-    ) -> FusionAction:
+    async def _full_agent_fallback(self, task: ParsedAgentTask, fallback_reason: str) -> FusionAction:
         """Run full-agent as heavy-agent fallback and annotate the path used."""
         try:
             action = await self._run_full_agent(task)
@@ -687,9 +644,7 @@ class FusionCore:
         }
         return action
 
-    def _primary_action(
-        self, primary_text: str, rationale: str, trace: dict | None = None
-    ) -> FusionAction:
+    def _primary_action(self, primary_text: str, rationale: str, trace: dict | None = None) -> FusionAction:
         """Convert ds4 primary output into an action and annotate the path used."""
         action = parse_action_from_text(primary_text)
         if action.type == "final_answer":
@@ -710,31 +665,72 @@ class FusionCore:
         )
 
         text = response.get("choices", [{}])[0].get("message", {}).get("content", "")
-        return self._annotate_trace(
-            FusionAction(
-                type="final_answer",
-                text=text,
-                tool_name=None,
-                tool_input=None,
-                confidence=1.0,
-                rationale_summary=None,
-            ),
-            self.config.model_coder,
+        return self._annotate_trace(FusionAction(
+            type="final_answer",
+            text=text,
+            tool_name=None,
+            tool_input=None,
+            confidence=1.0,
+            rationale_summary=None,
+        ), self.config.model_coder)
+
+    async def _run_agentic_workflow(self, task: ParsedAgentTask) -> FusionAction:
+        return self._annotate_agent_runtime_trace(
+            await self.agent_orchestrator.run(task, "agentic-workflow")
         )
+
+    async def _run_coding_workflow(self, task: ParsedAgentTask) -> FusionAction:
+        return self._annotate_agent_runtime_trace(
+            await self.agent_orchestrator.run(task, "coding-workflow")
+        )
+
+    async def _run_review_workflow(self, task: ParsedAgentTask) -> FusionAction:
+        return self._annotate_agent_runtime_trace(
+            await self.agent_orchestrator.run(task, "review-workflow")
+        )
+
+    def _annotate_agent_runtime_trace(self, action: FusionAction) -> FusionAction:
+        if action.trace is None:
+            action.trace = {}
+        model_id = (
+            action.trace.get("selected_model")
+            or action.trace.get("model")
+            or getattr(self.agent_orchestrator, "core_last_used_model", None)
+        )
+        if isinstance(model_id, str) and model_id:
+            self.last_used_model = model_id
+            action.trace["last_used_model"] = model_id
+        return action
+
+    def _annotate_workflow_routing(
+        self,
+        action: FusionAction,
+        routed_from_workflow: str | None,
+    ) -> FusionAction:
+        if routed_from_workflow is None:
+            return action
+        if action.trace is None:
+            action.trace = {}
+        action.trace["routed_from_workflow"] = routed_from_workflow
+        return action
 
     async def _run_agentic_pro_agent(self, task: ParsedAgentTask) -> FusionAction:
         """Agentic-pro: qwen3.6 coding/thinking/tool profile, not the default fast path."""
+        task = replace(task, text=f"/no_think\n{task.text}" if task.text else "/no_think")
         messages = self._build_messages(FAST_AGENT_SYSTEM, task)
         tools_payload = self._tools_payload(task)
         response = self.ollama.chat_completion(
             model=self.config.model_agentic_pro,
+            # Cap at 800 — qwen3.6 thinking blows larger budgets before
+            # writing any content. formatter-mlx uses the same model + 800
+            # reliably.
             messages=messages,
-            max_tokens=self._request_max_tokens(
-                task, self.config.full_panel_max_tokens
-            ),
+            max_tokens=self._request_max_tokens(task, 800),
             tools=tools_payload,
             stream=False,
-            temperature=self._request_temperature(task),
+            # Low temperature suppresses excessive thinking-block generation
+            # on qwen3.6; formatter-mlx uses 0.2 reliably.
+            temperature=self._request_temperature(task, 0.2),
         )
         action = self._action_from_ollama_response(response, tools_payload)
         if action.trace is None:
@@ -745,17 +741,18 @@ class FusionCore:
 
     async def _run_hermes_pro_agent(self, task: ParsedAgentTask) -> FusionAction:
         """Hermes-pro: qwen3.6 general multimodal desktop profile."""
+        task = replace(task, text=f"/no_think\n{task.text}" if task.text else "/no_think")
         messages = self._build_messages(CHAT_AGENT_SYSTEM, task)
         tools_payload = self._tools_payload(task)
         response = self.ollama.chat_completion(
             model=self.config.model_hermes_pro,
+            # Cap at 800 (matches formatter-mlx's reliable budget).
             messages=messages,
-            max_tokens=self._request_max_tokens(
-                task, self.config.full_panel_max_tokens
-            ),
+            max_tokens=self._request_max_tokens(task, 800),
             tools=tools_payload,
             stream=False,
-            temperature=self._request_temperature(task),
+            # formatter-mlx uses 0.2; same model, same reliable temp.
+            temperature=self._request_temperature(task, 0.2),
         )
         action = self._action_from_ollama_response(response, tools_payload)
         if action.trace is None:
@@ -770,17 +767,18 @@ class FusionCore:
         Uses a dedicated 256K input ceiling (qwen3.6:35b-a3b-nvfp4 native ctx)
         rather than the vision-pro 96K shared limit.
         """
+        task = replace(task, text=f"/no_think\n{task.text}" if task.text else "/no_think")
         messages = self._build_messages(FAST_AGENT_SYSTEM, task)
         tools_payload = self._tools_payload(task)
         response = self.ollama.chat_completion(
             model=self.config.model_agentic_mlx,
+            # Cap at 800 — qwen3.6 thinking model, formatter-mlx confirmed this is reliable.
             messages=messages,
-            max_tokens=self._request_max_tokens(
-                task, self.config.agentic_mlx_max_tokens
-            ),
+            max_tokens=self._request_max_tokens(task, 800),
             tools=tools_payload,
             stream=False,
-            temperature=self._request_temperature(task),
+            # formatter-mlx uses 0.2; same model, same reliable temp.
+            temperature=self._request_temperature(task, 0.2),
         )
         action = self._action_from_ollama_response(response, tools_payload)
         if action.trace is None:
@@ -791,6 +789,7 @@ class FusionCore:
 
     async def _run_formatter_mlx_agent(self, task: ParsedAgentTask) -> FusionAction:
         """Optional MLX formatter lane for text-only formatting and summarization."""
+        task = replace(task, text=f"/no_think\n{task.text}" if task.text else "/no_think")
         messages = self._build_messages(CHAT_AGENT_SYSTEM, task)
         response = self.ollama.chat_completion(
             model=self.config.model_formatter_mlx,
@@ -821,21 +820,17 @@ class FusionCore:
             "source_protocol": task.source_protocol,
             "stream": task.stream,
             "request_shape": (
-                "plugins"
-                if isinstance(raw.get("plugins"), list)
+                "plugins" if isinstance(raw.get("plugins"), list)
                 and any(
                     isinstance(p, dict) and p.get("id") == "fusion"
                     for p in raw.get("plugins", [])
                 )
-                else "fusion_block"
-                if isinstance(raw.get("fusion"), dict)
+                else "fusion_block" if isinstance(raw.get("fusion"), dict)
                 else "default"
             ),
         }
         try:
-            preset = resolve_preset(
-                fusion_req, default=self.config.fusion_default_preset
-            )
+            preset = resolve_preset(fusion_req, default=self.config.fusion_default_preset)
         except FusionPresetError as exc:
             trace["error"] = "fusion_preset_error"
             trace["error_detail"] = str(exc)
@@ -897,9 +892,7 @@ class FusionCore:
         trace["fusion"]["judge_backend"] = result["trace"]["judge_backend"]
         trace["fusion"]["panel_responses"] = result["trace"]["panel_responses"]
         trace["fusion"]["judge_text_preview"] = result["trace"]["judge_text_preview"]
-        trace["fusion"]["structured_had_fallback"] = result["trace"][
-            "structured_had_fallback"
-        ]
+        trace["fusion"]["structured_had_fallback"] = result["trace"]["structured_had_fallback"]
         trace["fusion"]["total_latency_ms"] = result["trace"]["total_latency_ms"]
         trace["fusion"]["structured"] = {
             "final_answer": result["structured"].final_answer,
@@ -918,18 +911,15 @@ class FusionCore:
             else "fusion_deliberation_fallback_used"
         )
 
-        return self._annotate_trace(
-            FusionAction(
-                type="final_answer",
-                text=result["text"],
-                tool_name=None,
-                tool_input=None,
-                confidence=confidence,
-                rationale_summary=rationale,
-                trace=trace,
-            ),
-            preset.judge_model,
-        )
+        return self._annotate_trace(FusionAction(
+            type="final_answer",
+            text=result["text"],
+            tool_name=None,
+            tool_input=None,
+            confidence=confidence,
+            rationale_summary=rationale,
+            trace=trace,
+        ), preset.judge_model)
 
     def close(self):
         self.ollama.close()
