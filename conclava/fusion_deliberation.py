@@ -98,7 +98,9 @@ def run_panel_serial(
         try:
             messages = [
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": original_prompt},
+                # Panel models (qwen3.6 thinking) burn budget on chain-of-thought before
+                # writing the analysis. Prepend /no_think at the user boundary.
+                {"role": "user", "content": f"/no_think\n{original_prompt}"},
             ]
             chat_response = panel_client.chat_completion(
                 model=model_id,

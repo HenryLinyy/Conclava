@@ -216,7 +216,7 @@ async def test_optional_mlx_profiles_use_optional_models_without_changing_defaul
     agentic_mlx = await core.execute(_task("agentic-mlx"))
     formatter_mlx = await core.execute(_task("formatter-mlx"))
 
-    assert cfg.model_agentic_pro == "qwen/qwen3.6-35b-a3b"
+    assert cfg.model_agentic_pro == "google/gemma-4-26b-a4b-qat"
     assert cfg.model_formatter == "google/gemma-4-26b-a4b-qat"
     assert agentic_mlx.trace["profile"] == "agentic-mlx"
     assert formatter_mlx.trace["profile"] == "formatter-mlx"
@@ -242,15 +242,14 @@ def test_agentic_mlx_has_dedicated_256k_context_limit():
     assert core._context_limit_for_profile("agentic-mlx") == 256000
 
 
-def test_agentic_mlx_max_tokens_default_is_600_for_thinking_model():
+def test_agentic_mlx_max_tokens_default_is_800_for_thinking_model():
     """qwen3.6:35b-a3b-nvfp4 is a reasoning/thinking model; chain-of-thought
-    eats ~500 tokens, so the default output budget must be >= 600 to leave
-    room for actual content. The previous default of 1800 was safe but wasteful
-    (most of the budget went to thinking). 600 is the minimum for a non-empty
-    content reply on a trivial PONG-style prompt.
+    eats ~500 tokens, so the default output budget must leave room for actual
+    content. v1.8 raised the default to 800 to give thinking models more output
+    headroom on non-trivial prompts.
     """
     cfg = FusionConfig()
-    assert cfg.agentic_mlx_max_tokens == 600
+    assert cfg.agentic_mlx_max_tokens == 800
     assert cfg.agentic_mlx_max_tokens >= 600  # hard floor for thinking model
 
 

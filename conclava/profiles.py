@@ -15,6 +15,9 @@ ProfileName = Literal[
     "agentic-mlx",
     "formatter-mlx",
     "fusion-agent",
+    "agentic-workflow",
+    "coding-workflow",
+    "review-workflow",
 ]
 
 PROFILE_MAP_OPENAI_RESPONSES: dict[str, ProfileName] = {
@@ -30,6 +33,13 @@ PROFILE_MAP_OPENAI_RESPONSES: dict[str, ProfileName] = {
     "conclava-agentic-mlx": "agentic-mlx",
     "conclava-formatter-mlx": "formatter-mlx",
     "conclava-fusion": "fusion-agent",
+    "conclava-fusion-budget": "fusion-agent",
+    "conclava-fusion-quality": "fusion-agent",
+    "conclava-fusion-coding": "fusion-agent",
+    "conclava-fusion-heavy": "fusion-agent",
+    "conclava-agent": "agentic-workflow",
+    "conclava-code-agent": "coding-workflow",
+    "conclava-review-agent": "review-workflow",
 }
 
 PROFILE_MAP_ANTHROPIC_MESSAGES: dict[str, ProfileName] = {
@@ -45,6 +55,13 @@ PROFILE_MAP_ANTHROPIC_MESSAGES: dict[str, ProfileName] = {
     "claude-conclava-agentic-mlx": "agentic-mlx",
     "claude-conclava-formatter-mlx": "formatter-mlx",
     "claude-conclava-fusion": "fusion-agent",
+    "claude-conclava-fusion-budget": "fusion-agent",
+    "claude-conclava-fusion-quality": "fusion-agent",
+    "claude-conclava-fusion-coding": "fusion-agent",
+    "claude-conclava-fusion-heavy": "fusion-agent",
+    "claude-conclava-agent": "agentic-workflow",
+    "claude-conclava-code-agent": "coding-workflow",
+    "claude-conclava-review-agent": "review-workflow",
 }
 
 PROFILE_MAP_OPENAI_CHAT: dict[str, ProfileName] = {
@@ -60,13 +77,17 @@ PROFILE_MAP_OPENAI_CHAT: dict[str, ProfileName] = {
     "conclava-agentic-mlx": "agentic-mlx",
     "conclava-formatter-mlx": "formatter-mlx",
     "conclava-fusion": "fusion-agent",
+    "conclava-fusion-budget": "fusion-agent",
+    "conclava-fusion-quality": "fusion-agent",
+    "conclava-fusion-coding": "fusion-agent",
+    "conclava-fusion-heavy": "fusion-agent",
+    "conclava-agent": "agentic-workflow",
+    "conclava-code-agent": "coding-workflow",
+    "conclava-review-agent": "review-workflow",
 }
 
 
-def resolve_profile(
-    model_name: str,
-    protocol: Literal["openai_responses", "anthropic_messages", "openai_chat"],
-) -> ProfileName:
+def resolve_profile(model_name: str, protocol: Literal["openai_responses", "anthropic_messages", "openai_chat"]) -> ProfileName:
     """Map a model name to the corresponding agent profile."""
     if protocol == "openai_responses":
         return PROFILE_MAP_OPENAI_RESPONSES.get(model_name, "fast-agent")

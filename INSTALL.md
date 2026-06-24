@@ -201,7 +201,7 @@ launchctl list | grep conclava
 ```bash
 # 健康檢查
 curl http://127.0.0.1:8088/health
-# 預期: {"status": "ok", "version": "1.5.0", ...}
+# 預期: {"status": "ok", "version": "1.6.0", ...}
 
 # 列出 fusion presets
 curl http://127.0.0.1:8088/v1/fusion/presets | python3 -m json.tool | head -30

@@ -194,9 +194,29 @@ Add `"stream": true` to watch each panelist finish and the judge's tokens arrive
 
 ---
 
+## Agent runtime (v1.8)
+
+Beyond single answers and the council, Conclava ships a multi-step **agent runtime** — a planner → executor → repair → critic → judge loop with tool calls, context compaction, a repo index, and replayable run traces persisted to SQLite. Three profiles drive it:
+
+| Model | What it does |
+| --- | --- |
+| `conclava-agent` | General long-horizon agent — planning, multi-step tool flows, research |
+| `conclava-code-agent` | Coding / repo-patch / test / repair workflow |
+| `conclava-review-agent` | Reviews plans, patches, architecture and risk without large rewrites |
+
+```bash
+curl http://127.0.0.1:8088/v1/responses \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"conclava-code-agent","input":"Add retries to the fetch helper. Use tests."}'
+```
+
+Each stage resolves a model **role** with its own fallback chain (`MODEL_ROLE_*` in `.env`), so a missing model degrades gracefully instead of failing the run. Two optional Fable/Mythos-style local workers can join the loop: **Qwable** (coding executor/repair, on by default) and **Qwythos** (long-context worker, opt-in). Toggle both in `.env`.
+
+---
+
 ## Model specialization
 
-v1.5 routes each profile to the model built for that job (LM Studio model IDs shown; swap for your own in `.env`):
+v1.6 routes each profile to the model built for that job (LM Studio model IDs shown; swap for your own in `.env`):
 
 | Role | Model | Approx RAM |
 | --- | --- | --- |
@@ -233,7 +253,7 @@ No overselling — these are real and intentional:
 
 ## Status
 
-`v1.5.0` · **290 tests passing** · CI on macOS (pytest + ruff) across Python 3.11 / 3.12.
+`v1.6.0` · **542 tests passing** · CI on macOS (pytest + ruff) across Python 3.11 / 3.12.
 
 ```bash
 ./.venv/bin/pytest tests/ -q

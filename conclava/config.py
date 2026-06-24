@@ -24,6 +24,9 @@ class FusionConfig(BaseSettings):
     local_model_backend: str = "lmstudio"
     ollama_base_url: str = "http://127.0.0.1:1234/v1"
     lmstudio_cli_path: str = os.path.expanduser("~/.lmstudio/bin/lms")
+    # JIT model auto-unload TTL (seconds) sent to LM Studio so idle models free
+    # memory faster than the 1h default. 0 = don't send (use LM Studio default).
+    lmstudio_ttl_seconds: int = 600
 
     # ds4
     ds4_base_url: str = "http://127.0.0.1:8000/v1"
@@ -39,17 +42,18 @@ class FusionConfig(BaseSettings):
     model_critic: str = "deepseek-r1-distill-qwen-32b"
     model_judge: str = "deepseek-r1-distill-qwen-32b"
     model_formatter: str = "google/gemma-4-26b-a4b-qat"
-    model_vision_fast: str = "google/gemma-4-26b-a4b-qat"
+    model_vision_fast: str = "qwen/qwen3-vl-30b"
     model_vision_pro: str = "qwen/qwen3-vl-30b"
     model_vision_pro_fallback: str = ""
-    model_agentic_pro: str = "qwen/qwen3.6-35b-a3b"
-    model_hermes_pro: str = "qwen/qwen3.6-35b-a3b"
-    model_agentic_mlx: str = "qwen/qwen3.6-35b-a3b"
+    # v1.10: gemma for first-call stability on agentic/hermes pro profiles
+    model_agentic_pro: str = "google/gemma-4-26b-a4b-qat"
+    model_hermes_pro: str = "google/gemma-4-26b-a4b-qat"
+    model_agentic_mlx: str = "google/gemma-4-26b-a4b-qat"
     model_formatter_mlx: str = "google/gemma-4-26b-a4b-qat"
     model_heavy: str = "deepseek-v4-flash"
 
     # G10 Fusion deliberation router
-    fusion_default_preset: str = "quality"
+    fusion_default_preset: str = "budget"
     fusion_max_tokens_panel: int = 1500
     fusion_max_tokens_judge: int = 3600
 
@@ -75,6 +79,39 @@ class FusionConfig(BaseSettings):
     # Disabled by default — enable if you see flakiness from LM Studio / ds4.
     fusion_max_retries: int = 0  # 0 = no retry, 2 = up to 2 retries (3 total)
     fusion_retry_base_delay: float = 1.0  # seconds; doubles each retry (1s, 2s, 4s)
+
+    # Agent runtime (v1.8)
+    agent_runtime_enabled: bool = True
+    agent_store_path: str = ".conclava_agent_runs.sqlite3"
+    agent_max_steps: int = 12
+    agent_max_tool_calls: int = 40
+    agent_max_repair_attempts: int = 3
+    agent_max_runtime_seconds: int = 1800
+    agent_enable_context_compaction: bool = True
+    agent_context_pack_max_chars: int = 64000
+    agent_repo_index_max_files: int = 300
+    agent_trace_enabled: bool = True
+    agent_replay_enabled: bool = True
+
+    # Workflow context limits
+    agentic_workflow_max_input_chars: int = 256000
+    coding_workflow_max_input_chars: int = 256000
+    review_workflow_max_input_chars: int = 160000
+
+    # Role fallback chain as comma-separated model ids
+    model_role_simple_formatter: str = "google/gemma-4-26b-a4b-qat"
+    model_role_planner: str = "qwen/qwen3.6-35b-a3b"
+    model_role_executor: str = "qwen/qwen3-coder-next"
+    model_role_repair: str = "qwen/qwen3-coder-next"
+    model_role_critic: str = "deepseek-r1-distill-qwen-32b"
+    model_role_judge: str = "qwen/qwen3.6-35b-a3b"
+    model_role_heavy_primary: str = "deepseek-v4-flash"
+    model_role_vision: str = "qwen/qwen3-vl-30b"
+    model_role_planner_fallback_chain: str = "qwen/qwen3.6-35b-a3b,qwen/qwen3-coder-next,google/gemma-4-26b-a4b-qat"
+    model_role_executor_fallback_chain: str = "qwen/qwen3-coder-next,qwen/qwen3.6-35b-a3b"
+    model_role_repair_fallback_chain: str = "qwen/qwen3-coder-next,qwen/qwen3.6-35b-a3b"
+    model_role_critic_fallback_chain: str = "deepseek-r1-distill-qwen-32b,qwen/qwen3.6-35b-a3b,google/gemma-4-26b-a4b-qat"
+    model_role_judge_fallback_chain: str = "qwen/qwen3.6-35b-a3b,deepseek-r1-distill-qwen-32b,google/gemma-4-26b-a4b-qat"
 
     # M5 resource estimates
     m5_unified_memory_gb: int = 128
@@ -111,7 +148,7 @@ class FusionConfig(BaseSettings):
     # qwen3.6:35b-a3b-nvfp4 is a thinking/reasoning model; chain-of-thought
     # eats ~500 tokens, so the default output budget must be >= 600 to leave
     # room for actual content. Override via env if you need longer replies.
-    agentic_mlx_max_tokens: int = 600
+    agentic_mlx_max_tokens: int = 800
     vision_max_tokens: int = 1600
     vision_max_images: int = 8
     vision_max_image_mb: int = 16
@@ -121,6 +158,32 @@ class FusionConfig(BaseSettings):
     # Streaming
     stream_keepalive_seconds: int = 10
     stream_chunk_chars: int = 1000
+
+    # v1.8: optional Fable/Mythos-style local models
+    enable_qwable_executor: bool = True
+    model_qwable: str = "qwable-9b-claude-fable-5"
+    model_qwable_runtime: str = "lmstudio"
+    model_qwable_context_limit: int = 32768
+    model_qwable_temperature: float = 0.25
+    model_qwable_top_p: float = 0.9
+    model_qwable_repeat_penalty: float = 1.05
+
+    enable_qwythos_long_context: bool = False
+    model_qwythos: str = "qwythos-9b-claude-mythos-5-1m"
+    model_qwythos_runtime: str = "lmstudio"
+    model_qwythos_context_limit: int = 65536
+    model_qwythos_max_context_limit: int = 131072
+    model_qwythos_temperature: float = 0.6
+    model_qwythos_top_p: float = 0.95
+    model_qwythos_top_k: int = 20
+    model_qwythos_repeat_penalty: float = 1.05
+
+    enable_executor_fallback: bool = True
+    enable_repair_fallback: bool = True
+    enable_long_context_fallback: bool = True
+
+    model_health_check_on_startup: bool = False
+    model_health_check_timeout_seconds: int = 30
 
     @field_validator("lmstudio_cli_path")
     @classmethod

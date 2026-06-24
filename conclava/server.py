@@ -9,6 +9,7 @@ import logging
 import inspect
 import os
 
+from conclava import __version__
 from conclava.config import FusionConfig
 from conclava.fusion_core import FusionCore
 from conclava.message_parsing import (
@@ -61,7 +62,7 @@ async def lifespan(app: FastAPI):
     logger.info("Conclava Gateway stopped")
 
 
-app = FastAPI(title="Conclava", version="1.5.0", lifespan=lifespan)
+app = FastAPI(title="Conclava", version=__version__, lifespan=lifespan)
 
 
 # ─── Health ──────────────────────────────────────────────
@@ -69,12 +70,12 @@ app = FastAPI(title="Conclava", version="1.5.0", lifespan=lifespan)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "1.5.0"}
+    return {"status": "ok", "version": __version__}
 
 
 @app.get("/v1/health")
 async def v1_health():
-    return {"status": "ok", "version": "1.5.0"}
+    return {"status": "ok", "version": __version__}
 
 
 # ─── Models ──────────────────────────────────────────────
