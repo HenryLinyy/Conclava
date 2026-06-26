@@ -107,11 +107,19 @@ class FusionConfig(BaseSettings):
     model_role_judge: str = "qwen/qwen3.6-35b-a3b"
     model_role_heavy_primary: str = "deepseek-v4-flash"
     model_role_vision: str = "qwen/qwen3-vl-30b"
-    model_role_planner_fallback_chain: str = "qwen/qwen3.6-35b-a3b,qwen/qwen3-coder-next,google/gemma-4-26b-a4b-qat"
-    model_role_executor_fallback_chain: str = "qwen/qwen3-coder-next,qwen/qwen3.6-35b-a3b"
+    model_role_planner_fallback_chain: str = (
+        "qwen/qwen3.6-35b-a3b,qwen/qwen3-coder-next,google/gemma-4-26b-a4b-qat"
+    )
+    model_role_executor_fallback_chain: str = (
+        "qwen/qwen3-coder-next,qwen/qwen3.6-35b-a3b"
+    )
     model_role_repair_fallback_chain: str = "qwen/qwen3-coder-next,qwen/qwen3.6-35b-a3b"
-    model_role_critic_fallback_chain: str = "deepseek-r1-distill-qwen-32b,qwen/qwen3.6-35b-a3b,google/gemma-4-26b-a4b-qat"
-    model_role_judge_fallback_chain: str = "qwen/qwen3.6-35b-a3b,deepseek-r1-distill-qwen-32b,google/gemma-4-26b-a4b-qat"
+    model_role_critic_fallback_chain: str = (
+        "deepseek-r1-distill-qwen-32b,qwen/qwen3.6-35b-a3b,google/gemma-4-26b-a4b-qat"
+    )
+    model_role_judge_fallback_chain: str = (
+        "qwen/qwen3.6-35b-a3b,deepseek-r1-distill-qwen-32b,google/gemma-4-26b-a4b-qat"
+    )
 
     # M5 resource estimates
     m5_unified_memory_gb: int = 128

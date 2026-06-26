@@ -28,7 +28,9 @@ def test_selector_resolves_coding_executor():
         "qwen/qwen3-coder-next",
         "qwen/qwen3.6-35b-a3b",
     ]
-    assert selection.max_tokens == 2500  # bumped for reasoning-model thinking headroom (see workflows.py)
+    assert (
+        selection.max_tokens == 2500
+    )  # bumped for reasoning-model thinking headroom (see workflows.py)
     assert selection.temperature == 0.2
     assert selection.reason == "workflow=coding-workflow; stage=executor; role=executor"
 

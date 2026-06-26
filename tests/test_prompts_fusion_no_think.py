@@ -2,8 +2,6 @@
 formatter-mlx) and fusion panel prompt: all must disable Qwen3.6 thinking by
 prefixing `/no_think` on both system and user boundaries."""
 
-import pytest
-
 from conclava.fusion_deliberation import run_panel_serial
 from conclava.fusion_schemas import PanelResponse
 from conclava.fusion_presets import FusionPreset
@@ -19,13 +17,24 @@ class _FakeClient:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    def chat_completion(self, *, model, messages, max_tokens, stream=False, temperature=0.7, tools=None):
-        self.calls.append({"model": model, "messages": messages, "max_tokens": max_tokens, "tools": tools})
+    def chat_completion(
+        self, *, model, messages, max_tokens, stream=False, temperature=0.7, tools=None
+    ):
+        self.calls.append(
+            {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "tools": tools,
+            }
+        )
         last_user = next((m for m in reversed(messages) if m.get("role") == "user"), {})
         return {
             "choices": [
                 {
-                    "message": {"content": (last_user.get("content") or "").strip()[:60]},
+                    "message": {
+                        "content": (last_user.get("content") or "").strip()[:60]
+                    },
                     "finish_reason": "stop",
                 }
             ]
@@ -58,7 +67,16 @@ def test_fusion_panel_serial_user_message_includes_no_think_prefix():
     captured: list[dict] = []
 
     class _C:
-        def chat_completion(self, *, model, messages, max_tokens, stream=False, temperature=0.7, tools=None):
+        def chat_completion(
+            self,
+            *,
+            model,
+            messages,
+            max_tokens,
+            stream=False,
+            temperature=0.7,
+            tools=None,
+        ):
             captured.append(messages)
             return {
                 "choices": [
@@ -102,7 +120,9 @@ def test_fusion_judge_system_disables_qwen_thinking_at_both_boundaries():
     assert "不要輸出任何思考過程" in msgs[0]["content"]
 
 
-def test_fusion_panel_serial_runs_with_no_think_prompts_and_records_panel_max_tokens(monkeypatch):
+def test_fusion_panel_serial_runs_with_no_think_prompts_and_records_panel_max_tokens(
+    monkeypatch,
+):
     client = _FakeClient()
     preset = FusionPreset(
         name="quality",

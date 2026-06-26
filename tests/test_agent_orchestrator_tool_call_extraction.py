@@ -39,4 +39,6 @@ def test_extract_tool_call_accepts_tool_call_input_json_string():
 
 def test_extract_tool_call_rejects_tool_call_input_non_json_string():
     with pytest.raises(ValueError, match="tool_call input must be an object"):
-        _extract_tool_call({"tool_call": {"name": "shell", "input": "python -m pytest"}})
+        _extract_tool_call(
+            {"tool_call": {"name": "shell", "input": "python -m pytest"}}
+        )

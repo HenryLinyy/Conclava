@@ -11,5 +11,15 @@ def test_planner_budget_allows_reasoning_model_to_finish_json_plan():
     content ended as partial JSON, causing planner_json_parse_failed. Direct
     reproduction with the Fibonacci code-agent prompt succeeded at 4000 tokens.
     """
-    assert WORKFLOW_DEFAULT_MAX_TOKENS[WorkflowName.AGENTIC.value][WorkflowStage.PLANNER.value] >= 4000
-    assert WORKFLOW_DEFAULT_MAX_TOKENS[WorkflowName.CODING.value][WorkflowStage.PLANNER.value] >= 4000
+    assert (
+        WORKFLOW_DEFAULT_MAX_TOKENS[WorkflowName.AGENTIC.value][
+            WorkflowStage.PLANNER.value
+        ]
+        >= 4000
+    )
+    assert (
+        WORKFLOW_DEFAULT_MAX_TOKENS[WorkflowName.CODING.value][
+            WorkflowStage.PLANNER.value
+        ]
+        >= 4000
+    )

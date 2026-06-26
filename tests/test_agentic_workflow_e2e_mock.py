@@ -17,7 +17,9 @@ from tests.agent_mocks import (
 )
 
 
-def _task(profile: str, text: str, *, raw_request=None, tool_results=None) -> ParsedAgentTask:
+def _task(
+    profile: str, text: str, *, raw_request=None, tool_results=None
+) -> ParsedAgentTask:
     return ParsedAgentTask(
         text=text,
         tools=[],
@@ -65,7 +67,9 @@ def _critic_response(*, fatal=False):
 
 
 @pytest.mark.asyncio
-async def test_code_agent_model_runs_planner_critic_executor_and_returns_tool_call(tmp_path):
+async def test_code_agent_model_runs_planner_critic_executor_and_returns_tool_call(
+    tmp_path,
+):
     profile = resolve_profile("conclava-code-agent", "openai_responses")
     core, fake_client = _core(
         tmp_path,
@@ -131,7 +135,9 @@ async def test_tool_result_continuation_appends_evidence_and_finalizes(tmp_path)
 
 
 @pytest.mark.asyncio
-async def test_rejected_shell_tool_call_returns_step_result_guidance_not_rejected_error(tmp_path):
+async def test_rejected_shell_tool_call_returns_step_result_guidance_not_rejected_error(
+    tmp_path,
+):
     core, _fake_client = _core(
         tmp_path,
         [

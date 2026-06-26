@@ -5,7 +5,9 @@ from conclava.context_pack import ContextPack
 from conclava.schemas import ParsedAgentTask
 
 
-def _task(text: str = "寫一個 Python function 計算 Fibonacci 第 n 項") -> ParsedAgentTask:
+def _task(
+    text: str = "寫一個 Python function 計算 Fibonacci 第 n 項",
+) -> ParsedAgentTask:
     return ParsedAgentTask(
         text=text,
         tools=[],

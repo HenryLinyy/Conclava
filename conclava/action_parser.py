@@ -16,7 +16,9 @@ _JSON_FENCE_RE = re.compile(
 )
 
 
-def _try_parse_json_candidate(text: str, tools: list[dict] | None) -> FusionAction | None:
+def _try_parse_json_candidate(
+    text: str, tools: list[dict] | None
+) -> FusionAction | None:
     """Try to parse `text` as a JSON action. Returns None on parse failure."""
     try:
         parsed = json.loads(text)
@@ -117,11 +119,17 @@ def parse_action_from_text(
 
         # Guard every shape: malformed tool_calls (non-list, non-dict element,
         # or non-dict function) must fall through to final_answer, not crash.
-        if isinstance(tool_calls, list) and tool_calls and isinstance(tool_calls[0], dict):
+        if (
+            isinstance(tool_calls, list)
+            and tool_calls
+            and isinstance(tool_calls[0], dict)
+        ):
             tc0 = tool_calls[0]
             func = tc0.get("function", {})
             if isinstance(func, dict):
-                tool_input, input_error = parse_tool_arguments(func.get("arguments", {}))
+                tool_input, input_error = parse_tool_arguments(
+                    func.get("arguments", {})
+                )
                 if input_error:
                     return _validation_failure(input_error)
                 ok, error = validate_tool_call(func.get("name"), tool_input, tools)
