@@ -1,6 +1,5 @@
 """Static workflow stage-to-model-role maps."""
 
-
 from conclava.model_roles import ModelRole, WorkflowName, WorkflowStage
 
 

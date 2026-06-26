@@ -10,15 +10,21 @@ def test_extract_agent_run_id_accepts_valid_metadata_only():
 
 
 async def test_run_uses_model_selector_for_planner_and_executor(tmp_path):
-    await orchestrator_tests.test_run_uses_model_selector_for_planner_and_executor(tmp_path)
+    await orchestrator_tests.test_run_uses_model_selector_for_planner_and_executor(
+        tmp_path
+    )
 
 
 async def test_invalid_planner_json_returns_failed_final_answer(tmp_path):
-    await orchestrator_tests.test_invalid_planner_json_returns_failed_final_answer(tmp_path)
+    await orchestrator_tests.test_invalid_planner_json_returns_failed_final_answer(
+        tmp_path
+    )
 
 
 async def test_agentic_workflow_runs_plan_critic_before_executor(tmp_path):
-    await orchestrator_tests.test_agentic_workflow_runs_plan_critic_before_executor(tmp_path)
+    await orchestrator_tests.test_agentic_workflow_runs_plan_critic_before_executor(
+        tmp_path
+    )
 
 
 async def test_agentic_workflow_blocks_on_fatal_plan_critic(tmp_path):
@@ -47,9 +53,7 @@ async def test_planner_prose_with_fenced_json_block_recovers(tmp_path):
         + json.dumps({"steps": [{"title": "schema", "intent": "illustration"}]})
         + "\n```\n\n"
         "3.  **Real plan:**\n"
-        "```json\n"
-        + json.dumps(plan, ensure_ascii=False)
-        + "\n```\n\n"
+        "```json\n" + json.dumps(plan, ensure_ascii=False) + "\n```\n\n"
         "All constraints met. Proceeding."
     )
     planner_response = t._lmstudio_reasoning_response(
@@ -61,7 +65,9 @@ async def test_planner_prose_with_fenced_json_block_recovers(tmp_path):
         reasoning_text="plan looks fine",
     )
     executor_response = t._lmstudio_reasoning_response(
-        content=json.dumps({"tool_call": {"name": "read_file", "input": {"path": "x.py"}}}),
+        content=json.dumps(
+            {"tool_call": {"name": "read_file", "input": {"path": "x.py"}}}
+        ),
         reasoning_text="read x.py",
     )
     orchestrator, client, _selector, _store, _compactor = t._orchestrator(
@@ -71,9 +77,9 @@ async def test_planner_prose_with_fenced_json_block_recovers(tmp_path):
     action = await orchestrator.run(t._task("Plan fib"), "coding-workflow")
 
     # Planner must NOT have failed — the workflow should advance past it.
-    assert action.type != "final_answer" or "planner_json_parse_failed" not in (action.text or ""), (
-        f"planner failed unexpectedly: trace={action.trace!r}"
-    )
+    assert action.type != "final_answer" or "planner_json_parse_failed" not in (
+        action.text or ""
+    ), f"planner failed unexpectedly: trace={action.trace!r}"
     # And the plan should have been parsed (≥1 step from the real block).
     assert (action.trace or {}).get("agent_status") != "failed", (
         f"workflow marked failed: {action.trace!r}"
@@ -102,7 +108,9 @@ async def test_planner_plain_json_inside_prose_recovers(tmp_path):
         reasoning_text="ok",
     )
     executor_response = t._lmstudio_reasoning_response(
-        content=json.dumps({"tool_call": {"name": "read_file", "input": {"path": "x.py"}}}),
+        content=json.dumps(
+            {"tool_call": {"name": "read_file", "input": {"path": "x.py"}}}
+        ),
         reasoning_text="read",
     )
     orchestrator, _client, _s, _st, _c = t._orchestrator(

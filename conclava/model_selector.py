@@ -61,7 +61,10 @@ class ModelSelector:
                 c.model_role_simple_formatter or c.model_formatter_mlx or c.model_fast
             ),
             ModelRole.PLANNER: (
-                c.model_role_planner or c.model_agentic_mlx or c.model_agentic_pro or c.model_coder
+                c.model_role_planner
+                or c.model_agentic_mlx
+                or c.model_agentic_pro
+                or c.model_coder
             ),
             ModelRole.EXECUTOR: (
                 c.model_qwable
@@ -101,7 +104,9 @@ class ModelSelector:
             chain.insert(0, primary)
         return chain or [primary]
 
-    def select(self, workflow: str, stage: str, *, temperature: float = 0.2) -> RoleSelection:
+    def select(
+        self, workflow: str, stage: str, *, temperature: float = 0.2
+    ) -> RoleSelection:
         try:
             role = WORKFLOW_STAGE_ROLE_MAP[workflow][stage]
         except KeyError as exc:
@@ -187,7 +192,7 @@ class ModelSelector:
         if spec is not None:
             assert_model_allowed_for_role(spec, role.value)
 
-        gen_cfg = (spec.generation_config() if spec else {})
+        gen_cfg = spec.generation_config() if spec else {}
         if temperature is not None:
             gen_cfg = {**gen_cfg, "temperature": temperature}
         elif "temperature" not in gen_cfg:
@@ -205,7 +210,9 @@ class ModelSelector:
             reason=f"stage={stage.value}; role={role.value}",
         )
 
-    def _spec_for_model(self, model_name: str, role: ModelRole) -> LocalModelSpec | None:
+    def _spec_for_model(
+        self, model_name: str, role: ModelRole
+    ) -> LocalModelSpec | None:
         """Return the LocalModelSpec for a model name, or None if not registered."""
         c = self.config
         if model_name == c.model_qwable:

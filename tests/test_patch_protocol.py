@@ -4,10 +4,16 @@
 def test_validate_tool_call_accepts_known_non_shell_tools():
     from conclava.patch_protocol import validate_tool_call
 
-    assert validate_tool_call("read_file", {"path": "conclava/server.py"}) == (True, None)
+    assert validate_tool_call("read_file", {"path": "conclava/server.py"}) == (
+        True,
+        None,
+    )
     assert validate_tool_call("search_files", {"query": "AgentRun"}) == (True, None)
     assert validate_tool_call("list_files", {"path": "conclava"}) == (True, None)
-    assert validate_tool_call("run_tests", {"command": "python -m pytest"}) == (True, None)
+    assert validate_tool_call("run_tests", {"command": "python -m pytest"}) == (
+        True,
+        None,
+    )
 
 
 def test_validate_tool_call_rejects_unknown_tool():
@@ -35,7 +41,10 @@ def test_edit_and_apply_patch_require_safe_relative_path():
         assert ok is False
         assert reason == "parent_path_not_allowed"
 
-        assert validate_tool_call(tool_name, {"path": "conclava/file.py"}) == (True, None)
+        assert validate_tool_call(tool_name, {"path": "conclava/file.py"}) == (
+            True,
+            None,
+        )
 
 
 def test_shell_allows_only_standard_test_commands():

@@ -6,9 +6,15 @@ from conclava.profiles import resolve_profile
 
 def test_alias_model_names_map_to_fusion_agent():
     for p in ("budget", "quality", "coding", "heavy"):
-        assert resolve_profile(f"conclava-fusion-{p}", "openai_responses") == "fusion-agent"
+        assert (
+            resolve_profile(f"conclava-fusion-{p}", "openai_responses")
+            == "fusion-agent"
+        )
         assert resolve_profile(f"conclava-fusion-{p}", "openai_chat") == "fusion-agent"
-        assert resolve_profile(f"claude-conclava-fusion-{p}", "anthropic_messages") == "fusion-agent"
+        assert (
+            resolve_profile(f"claude-conclava-fusion-{p}", "anthropic_messages")
+            == "fusion-agent"
+        )
 
 
 def test_preset_derived_from_model_name():
@@ -24,11 +30,14 @@ def test_plain_fusion_name_has_no_preset_override():
 
 
 def test_explicit_fusion_block_wins_over_model_name():
-    r = extract_fusion_request({"model": "conclava-fusion-budget", "fusion": {"preset": "quality"}})
+    r = extract_fusion_request(
+        {"model": "conclava-fusion-budget", "fusion": {"preset": "quality"}}
+    )
     assert r.preset == "quality"
 
 
 def test_default_preset_is_budget():
     from conclava.config import FusionConfig
+
     assert FusionConfig().fusion_default_preset == "budget"
     assert FusionConfig().lmstudio_ttl_seconds == 600
